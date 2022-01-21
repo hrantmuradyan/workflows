@@ -8,6 +8,12 @@ on:
         required: false
         type: string
         default: ${{ github.ref }}
+      function-name:
+        required: true
+        type: string
+      working-directory:
+        required: true
+        type: string
     secrets:
       packages-read-token:
         description: A token with access to pull packages from TBOL registry
@@ -51,7 +57,10 @@ jobs:
           aws-region: ${{ secrets.aws-region }}
 
       - name: Echo Lambda function name
-        run: echo "Lambda function name is ${{ env.LAMBDA_FUNCTION_NAME }}"
+        run: echo "Lambda function name is ${{ inputs.function-name }}"
+
+      - name: Echo Working directory
+        run: echo "Working directory is ${{ inputs.working-directory }}"
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
