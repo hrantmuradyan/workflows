@@ -1,0 +1,125 @@
+name: Validate Package PR
+
+on:
+  workflow_call:
+    inputs:
+      dependent-repos:
+        description: Stringified JSON array of repos that depend on the package being changed in the PR
+        required: true
+        type: string
+      git-ref:
+        description: The ref to pull down and build
+        required: false
+        type: string
+        default: ${{ github.event.pull_request.head.sha }}
+      package-repo-name:
+        description: The name of the repo the PR is for
+        required: false
+        type: string
+        default: ${{ github.event.pull_request.head.repo.name }}
+    secrets:
+      packages-read-token:
+        description: A token with access to pull packages from TBOL registry
+        required: true
+
+jobs:
+  validate-pr:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Setup node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14
+          registry-url: https://npm.pkg.github.com
+          scope: "@tbol-com"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.packages-read-token }}
+
+      - name: Run build
+        run: yarn build
+
+      - name: Run lint
+        run: yarn lint
+
+      - name: Run tests
+        run: yarn test
+
+      - name: Publish artifacts dry run
+        run: npm publish --dry-run
+
+      - name: Upload artifacts for dependency jobs
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ inputs.package-repo-name }}-artifacts
+          path: |
+            .
+            !node_modules/**
+
+  check-breaking-dependencies:
+    runs-on: ubuntu-latest
+    needs: validate-pr
+    strategy:
+      fail-fast: false
+      matrix:
+        dependent-repo:
+          ${{ fromJson(inputs.dependent-repos) }}
+
+          # - account-administration-service
+          # - companies-house-service
+          # - comply-advantage-service
+          # - jumio-service
+          # - tbol-boilerplate-service
+          # - transaction-service
+          # - web
+    steps:
+      - name: "Setup node.js"
+        uses: actions/setup-node@v2
+        with:
+          node-version: "14.x"
+          registry-url: "https://npm.pkg.github.com"
+          scope: "@tbol-com"
+
+      - name: Download ${{ inputs.package-repo-name }} artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: ${{ inputs.package-repo-name }}-artifacts
+          path: ${{ inputs.package-repo-name }}-pr
+
+      - name: Checkout @tbol-com/${{ matrix.dependent-repo }}
+        uses: actions/checkout@v2
+        with:
+          repository: "tbol-com/${{ matrix.dependent-repo }}"
+          path: ${{ matrix.dependent-repo }}
+          token: ${{ secrets.packages-read-token }}
+
+      - name: Point ${{ matrix.dependent-repo }} at PR version of ${{ inputs.package-repo-name }}
+        # Remove the package first to clear it entirely from the lock file
+        run: |
+          yarn remove @tbol-com/${{ inputs.package-repo-name }}
+          yarn add "file:../${{ inputs.package-repo-name }}-pr"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.packages-read-token }}
+        working-directory: ./${{ matrix.dependent-repo }}
+
+      - name: Build ${{ matrix.dependent-repo }}
+        run: yarn build
+        working-directory: ./${{ matrix.dependent-repo }}
+        env:
+          NODE_OPTIONS: '--max_old_space_size=4096'
+
+      - name: Run tests
+        run: yarn test
+        working-directory: ./${{ matrix.dependent-repo }}
+
+      - name: Run lint
+        run: yarn lint
+        working-directory: ./${{ matrix.dependent-repo }}

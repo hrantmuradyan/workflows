@@ -1,0 +1,90 @@
+name: publish-package
+
+on:
+  workflow_call:
+    inputs:
+      git-ref:
+        description: Reference to the commit to be pulled
+        required: false
+        type: string
+        default: ${{ github.ref }}
+    secrets:
+      packages-read-token:
+        description: Token that lets the workflow read packages
+        required: true
+      github-token:
+        description: Token that lets the workflow commit to the repo and publish packages
+        required: true
+
+jobs:
+  bump-version:
+    name: Bump Package Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Setup node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14.x
+          registry-url: https://npm.pkg.github.com
+          scope: "@tbol-com"
+
+      - name: Automated version bump
+        id: version-bump
+        uses: phips28/gh-action-bump-version@master
+        with:
+          commit-message: Version bumped to {{version}}
+          skip-tag: true
+          default: patch
+          minor-wording: add,minor,new
+          major-wording: major,cut-major
+        env:
+          GITHUB_TOKEN: ${{ secrets.github-token }}
+
+      - name: Output step
+        env:
+          NEW_TAG: ${{ steps.version-bump.outputs.newTag }}
+        run: echo "Bumped up to version - $NEW_TAG"
+
+  publish:
+    name: Publish Package
+    runs-on: ubuntu-latest
+    needs: bump-version
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Setup node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 14.x
+          registry-url: https://npm.pkg.github.com
+          scope: "@tbol-com"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.packages-read-token }}
+
+      - name: Run tests
+        run: yarn test
+
+      - name: Build artifacts
+        run: yarn build
+
+      - name: Run lint
+        run: yarn lint
+
+      - name: Publish artifacts
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.github-token }}

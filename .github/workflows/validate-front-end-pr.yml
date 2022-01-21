@@ -1,0 +1,56 @@
+name: Validate Front End PR
+
+on:
+  workflow_call:
+    inputs:
+      git-ref:
+        description: The ref to pull down and build
+        required: false
+        type: string
+        default: ${{ github.event.pull_request.head.sha }}
+    secrets:
+      packages-read-token:
+        description: A token with access to pull packages from TBOL registry
+        required: true
+
+jobs:
+  validate-pr:
+    name: Validate PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v2
+        with:
+          ref: ${{ inputs.git-ref }}
+
+      - name: Setup node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: 16
+          registry-url: https://npm.pkg.github.com
+          scope: "@tbol-com"
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.packages-read-token }}
+
+      - name: Run build
+        run: yarn build
+
+      - name: Run unit tests
+        run: yarn test:unit
+
+      - name: Run integration tests
+        uses: cypress-io/github-action@v2
+        with:
+          install: true
+          start: yarn start
+          wait-on: "http://localhost:3000"
+          wait-on-timeout: 180 # wait for 3 minutes for the server to respond
+          browser: chrome
+          spec: cypress/integration/**/*.spec.ts
+          config-file: cypress.json
+
+      # future steps
+      # run veracode scan   

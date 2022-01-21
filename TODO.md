@@ -1,0 +1,7 @@
+- Bring in workflows already in use for BE services, react/redux apps
+- Bring in common workflow
+- Get next.js workflows established
+- Set up PR system to verify whether a workflow change is good or not
+- Switch dependabot to only run weekly
+- Update template repo
+- Change dependabot if check to look at PR author, not actor

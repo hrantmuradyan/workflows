@@ -1,0 +1,101 @@
+name: Handle Dependabot PR
+
+on:
+  workflow_call:
+    inputs:
+      pr-url:
+        description: "The URL of the PR to operate on"
+        type: string
+        required: false
+        default: "${{ github.event.pull_request.html_url }}"
+    secrets:
+      github-token:
+        description: "A token with access to make comments on the PR"
+        required: true
+
+jobs:
+  handle-dependabot-pr:
+    name: Handle Dependabot PR
+    runs-on: ubuntu-latest
+    env:
+      minCompatibilityScore: 95
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    steps:
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v1.1.1
+        with:
+          github-token: "${{ secrets.github-token }}"
+
+      - name: Find compatibility score URL from PR body
+        id: compatibilityScoreUrl
+        uses: actions-ecosystem/action-regex-match@v2
+        with:
+          text: ${{ github.event.pull_request.body }}
+          regex: '\[!\[Dependabot compatibility score\]\((.*)\)\]'
+          flags: gm
+
+      - name: Echo compatibility score URL
+        run: echo "compatibility score URL is ${{ steps.compatibilityScoreUrl.outputs.group1 }}"
+
+      - name: Get compatibility score if compatibility score URL exist
+        if: ${{ steps.compatibilityScoreUrl.outputs.group1 }}
+        id: getCSRequest
+        uses: fjogeleit/http-request-action@master
+        with:
+          url: ${{ steps.compatibilityScoreUrl.outputs.group1 }}
+          method: "GET"
+
+      - name: Get compatibility score
+        id: regexMatchScore
+        uses: actions-ecosystem/action-regex-match@v2
+        with:
+          text: ${{ steps.getCSRequest.outputs.response }}
+          regex: '<title>compatibility: (.[0-9]+)%<\/title>'
+          flags: gm
+
+      - name: Echo compatibility score
+        run: echo "compatibility score is ${{ steps.regexMatchScore.outputs.group1 }}"
+
+      - name: Parse to numbers and check minCompatibilityScore
+        uses: satackey/action-js-inline@v0.0.2
+        id: minScore
+        with:
+          # As environment variables are string, need to be parsed to the number before comparing.
+          script: |
+            const core = require('@actions/core');
+            core.setOutput('autoMerge', parseInt(${{steps.regexMatchScore.outputs.group1}})>=parseInt(process.env.minCompatibilityScore));
+      - name: Comment on non-major PR
+        if: ${{ steps.minScore.outputs.autoMerge == 'true' && (steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor') }}
+        run: gh pr comment -b "Auto-merging Dependabot PR with minor or patch version increase and compatibility score >= ${{env.minCompatibilityScore}}%" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.github-token}}
+
+      - name: "Comment on compatibility score < ${{env.minCompatibilityScore}}% PR"
+        if: ${{ steps.minScore.outputs.autoMerge == 'false' }}
+        run: gh pr comment -b "Detected compatibility score < ${{env.minCompatibilityScore}}%, not auto merging" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.github-token}}
+
+      - name: Comment on major PR
+        if: ${{steps.metadata.outputs.update-type == 'version-update:semver-major'}}
+        run: gh pr comment -b "Detected major version change, not auto merging" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.github-token}}
+
+      - name: Comment on unknown PR
+        if: ${{steps.metadata.outputs.update-type == null}}
+        run: gh pr comment -b "Unable to determine version update type, not auto merging" "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.github-token}}
+
+      - name: Enable auto-merge for Dependabot PRs
+        if: ${{ steps.minScore.outputs.autoMerge == 'true' && (steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor') }}
+        run: gh pr merge --auto -s "$PR_URL" && gh pr review -a "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.github-token}}
