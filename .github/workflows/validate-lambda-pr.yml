@@ -8,6 +8,9 @@ on:
         required: false
         type: string
         default: ${{ github.event.pull_request.head.sha }}
+      working-directory:
+        required: true
+        type: string
     secrets:
       packages-read-token:
         description: A token with access to pull packages from TBOL registry
@@ -19,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./okta-authorizer
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v2

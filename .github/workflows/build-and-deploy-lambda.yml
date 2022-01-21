@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./okta-authorizer
+        working-directory: ${{ inputs.working-directory }}
 
     steps:
       - name: Checkout source code
@@ -55,12 +55,6 @@ jobs:
           aws-access-key-id: ${{ secrets.aws-access-key-id }}
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: ${{ secrets.aws-region }}
-
-      - name: Echo Lambda function name
-        run: echo "Lambda function name is ${{ inputs.function-name }}"
-
-      - name: Echo Working directory
-        run: echo "Working directory is ${{ inputs.working-directory }}"
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
@@ -88,4 +82,4 @@ jobs:
         run: |
           cd ./dist
           zip -r -D deploy.zip * >/dev/null
-          aws lambda update-function-code --function-name=okta-authorizer-lambda --zip-file=fileb://deploy.zip
+          aws lambda update-function-code --function-name=${{ inputs.function-name }} --zip-file=fileb://deploy.zip
