@@ -56,6 +56,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.aws-secret-access-key }}
           aws-region: ${{ secrets.aws-region }}
 
+      - name: Echo Lambda function name
+        run: echo "Lambda function name is ${{ inputs.function-name }}"
+
+      - name: Echo Working directory
+        run: echo "Working directory is ${{ inputs.working-directory }}"
+
       - name: Install dependencies
         run: yarn install --frozen-lockfile
         env:
@@ -64,8 +70,8 @@ jobs:
       - name: Run build
         run: yarn build
 
-      - name: Run lint
-        run: yarn lint
+      # - name: Run lint
+      #   run: yarn lint
 
       - name: Run test
         run: yarn test
